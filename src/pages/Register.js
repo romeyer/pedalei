@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import styled from 'styled-components';
 import { FiMail, FiLock, FiUser, FiEye, FiEyeOff } from 'react-icons/fi';
+import PedaleiLogo from '../components/PedaleiLogo';
 
 const Container = styled.div`
   min-height: 100vh;
@@ -183,7 +184,9 @@ const Register = () => {
   return (
     <Container>
       <Card>
-        <Title>🚴‍♂️ Pedalei</Title>
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1rem' }}>
+          <PedaleiLogo width={180} height={54} />
+        </div>
         <Subtitle>Join the cycling community!</Subtitle>
         
         <Form onSubmit={handleSubmit}>

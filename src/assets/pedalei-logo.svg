@@ -1,0 +1,26 @@
+<svg width="200" height="60" viewBox="0 0 200 60" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background circle for the bike icon -->
+  <circle cx="25" cy="30" r="20" fill="#3498db" opacity="0.1"/>
+  
+  <!-- Bicycle icon -->
+  <g stroke="#3498db" stroke-width="2" fill="none">
+    <!-- Left wheel -->
+    <circle cx="15" cy="35" r="8"/>
+    <!-- Right wheel -->
+    <circle cx="35" cy="35" r="8"/>
+    <!-- Frame -->
+    <path d="M15 35 L25 20 L35 35 M25 20 L30 25 M25 25 L35 35"/>
+    <!-- Seat -->
+    <line x1="22" y1="20" x2="28" y2="20" stroke-width="3" stroke-linecap="round"/>
+    <!-- Pedal -->
+    <circle cx="25" cy="30" r="2" fill="#3498db"/>
+  </g>
+  
+  <!-- Location pin integrated with bike -->
+  <path d="M25 12 C21 12 18 15 18 18.5 C18 22 25 28 25 28 S32 22 32 18.5 C32 15 29 12 25 12 Z" fill="#e74c3c"/>
+  <circle cx="25" cy="18.5" r="2" fill="white"/>
+  
+  <!-- Text -->
+  <text x="55" y="25" font-family="Arial, sans-serif" font-size="24" font-weight="bold" fill="#2c3e50">Pedalei</text>
+  <text x="55" y="42" font-family="Arial, sans-serif" font-size="12" fill="#7f8c8d">Navigate • Cycle • Explore</text>
+</svg>

@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { FiHome, FiPlus, FiClock, FiLogOut, FiUser } from 'react-icons/fi';
 import styled from 'styled-components';
+import PedaleiLogo from './PedaleiLogo';
 
 const NavContainer = styled.nav`
   background: #2c3e50;
@@ -90,7 +91,7 @@ const Navbar = () => {
   return (
     <NavContainer>
       <Logo to="/dashboard">
-        🚴‍♂️ Pedalei
+        <PedaleiLogo width={120} height={36} />
       </Logo>
       
       <NavLinks>

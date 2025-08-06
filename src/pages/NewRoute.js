@@ -695,6 +695,7 @@ const NewRoute = () => {
   const [waypoints, setWaypoints] = useState([]);
   const [directions, setDirections] = useState(null);
   const [routeInfo, setRouteInfo] = useState(null);
+  const sidebarRef = useRef(null);
   const [isUsingCurrentLocation, setIsUsingCurrentLocation] = useState(true);
   const [currentLocationCoords, setCurrentLocationCoords] = useState(null);
   const [locationLoading, setLocationLoading] = useState(false);
@@ -739,6 +740,11 @@ const NewRoute = () => {
   const [lastKnownPosition, setLastKnownPosition] = useState(null);
   const [stationaryStartTime, setStationaryStartTime] = useState(null);
   
+  // GPS Simulation states (for testing)
+  const [isSimulating, setIsSimulating] = useState(false);
+  const [simulationSpeed, setSimulationSpeed] = useState(1); // 1x = normal speed
+  const [simulationStepIndex, setSimulationStepIndex] = useState(0);
+  
   const originRef = useRef();
   const destinationRef = useRef();
   const waypointRefs = useRef([]);
@@ -747,20 +753,24 @@ const NewRoute = () => {
     id: 'google-map-script',
     googleMapsApiKey: process.env.REACT_APP_GOOGLE_MAPS_API_KEY,
     libraries,
-    version: 'weekly',
-    region: 'BR',
-    language: 'pt-BR'
+    version: 'weekly'
   });
 
   // Debug Google Maps API key loading
   useEffect(() => {
-    console.log('Google Maps API Key:', process.env.REACT_APP_GOOGLE_MAPS_API_KEY ? 'Present' : 'Missing');
-    console.log('Load Error:', loadError);
-    console.log('Is Loaded:', isLoaded);
+    console.log('🔍 Google Maps Debug Info:');
+    console.log('- API Key:', process.env.REACT_APP_GOOGLE_MAPS_API_KEY ? 'Present' : '❌ MISSING');
+    console.log('- Load Error:', loadError);
+    console.log('- Is Loaded:', isLoaded);
+    console.log('- Google Maps Available:', typeof window.google !== 'undefined');
+    
+    if (loadError) {
+      console.error('🚨 Google Maps Load Error:', loadError);
+    }
     
     // Test API connectivity when loaded
     if (isLoaded && !loadError) {
-      console.log('Google Maps loaded successfully');
+      console.log('✅ Google Maps loaded successfully');
       
       // Test basic geocoding functionality
       const testGeocoder = () => {
@@ -790,9 +800,15 @@ const NewRoute = () => {
   // Cleanup bike layer monitor on unmount
   useEffect(() => {
     return () => {
-      if (map && map._bikLayerMonitor) {
-        clearInterval(map._bikLayerMonitor);
-        console.log('Cleaned up bike layer monitor');
+      if (map) {
+        if (map._bikLayerMonitor) {
+          clearInterval(map._bikLayerMonitor);
+          console.log('Cleaned up bike layer monitor');
+        }
+        if (map._elementHideInterval) {
+          clearInterval(map._elementHideInterval);
+          console.log('Cleaned up element hide interval');
+        }
       }
     };
   }, [map]);
@@ -1288,10 +1304,48 @@ const NewRoute = () => {
   const processRouteResult = (result) => {
     setDirections(result);
     
-    // Simple and clean approach to ensure bike layer stays hidden
+    // Aggressive approach to ensure bike layer stays hidden after route calculation
     if (!showBikeLayer && bikeLayer) {
       console.log('Processing route result - hiding bike layer');
       bikeLayer.setMap(null);
+    }
+    
+    // Force hide bicycle features that Google Maps might show automatically
+    if (map && !showBikeLayer) {
+      console.log('🚫 Force hiding bicycle features after route calculation');
+      
+      // Remove any overlays that might have been added
+      const overlays = map.overlayMapTypes;
+      if (overlays && overlays.getLength() > 0) {
+        for (let i = overlays.getLength() - 1; i >= 0; i--) {
+          const overlay = overlays.getAt(i);
+          if (overlay) {
+            console.log('Removing overlay after route calculation');
+            overlays.removeAt(i);
+          }
+        }
+      }
+      
+      // Apply minimal styles to hide only bicycle features
+      const hideBicycleOnly = [
+        {
+          featureType: 'road.bicycle',
+          stylers: [{ visibility: 'off' }]
+        }
+      ];
+      
+      // Apply minimal bicycle hiding styles
+      map.setOptions({ styles: hideBicycleOnly });
+      
+      // Additional check after a delay
+      setTimeout(() => {
+        if (!showBikeLayer && map.overlayMapTypes) {
+          const overlaysCheck = map.overlayMapTypes;
+          for (let i = overlaysCheck.getLength() - 1; i >= 0; i--) {
+            overlaysCheck.removeAt(i);
+          }
+        }
+      }, 1000);
     }
     
     const route = result.routes[0];
@@ -1357,6 +1411,19 @@ const NewRoute = () => {
         difficulty,
         difficultyColor
       });
+
+      // Auto-scroll to show route results
+      setTimeout(() => {
+        if (sidebarRef.current) {
+          const routeInfoElement = sidebarRef.current.querySelector('[data-route-info]');
+          if (routeInfoElement) {
+            routeInfoElement.scrollIntoView({ 
+              behavior: 'smooth',
+              block: 'start'
+            });
+          }
+        }
+      }, 500);
     });
 
     // Extract navigation steps
@@ -1470,6 +1537,74 @@ const NewRoute = () => {
     }
   };
 
+  // GPS Simulation functions
+  const startGPSSimulation = () => {
+    if (!navigationSteps.length) return;
+    
+    console.log('🎮 Starting GPS simulation');
+    setIsSimulating(true);
+    setSimulationStepIndex(0);
+    
+    // Start from first step location
+    const firstLocation = navigationSteps[0].location;
+    setUserLocation(firstLocation);
+    
+    // Simulate movement along the route
+    let currentStepIdx = 0;
+    let progress = 0;
+    
+    const simulationInterval = setInterval(() => {
+      if (!isNavigating || currentStepIdx >= navigationSteps.length) {
+        clearInterval(simulationInterval);
+        setIsSimulating(false);
+        return;
+      }
+      
+      const currentStep = navigationSteps[currentStepIdx];
+      const nextStep = navigationSteps[currentStepIdx + 1];
+      
+      if (nextStep) {
+        // Interpolate between current and next step
+        const lat1 = currentStep.location.lat;
+        const lng1 = currentStep.location.lng;
+        const lat2 = nextStep.location.lat;
+        const lng2 = nextStep.location.lng;
+        
+        const simulatedLat = lat1 + (lat2 - lat1) * progress;
+        const simulatedLng = lng1 + (lng2 - lng1) * progress;
+        
+        const simulatedLocation = {
+          lat: simulatedLat,
+          lng: simulatedLng
+        };
+        
+        setUserLocation(simulatedLocation);
+        
+        // Simulate speed (10-25 km/h for cycling)
+        const simSpeed = 15 + Math.random() * 10;
+        setCurrentSpeed(Math.round(simSpeed));
+        
+        // Update progress
+        progress += 0.1 * simulationSpeed;
+        
+        if (progress >= 1) {
+          currentStepIdx++;
+          progress = 0;
+          setSimulationStepIndex(currentStepIdx);
+        }
+      } else {
+        // Reached end
+        clearInterval(simulationInterval);
+        setIsSimulating(false);
+      }
+    }, 1000 / simulationSpeed); // Adjust interval based on speed
+  };
+
+  const stopGPSSimulation = () => {
+    setIsSimulating(false);
+    console.log('🛑 GPS simulation stopped');
+  };
+
   const startNavigation = () => {
     if (!navigationSteps.length) {
       alert('Nenhuma rota calculada. Calcule a rota primeiro.');
@@ -1494,8 +1629,12 @@ const NewRoute = () => {
     setLastKnownPosition(null);
     setStationaryStartTime(now);
     
-    // Start tracking user location for navigation
-    if (navigator.geolocation) {
+    // Use GPS simulation for development/testing or real GPS
+    if (process.env.NODE_ENV === 'development' && isSimulating) {
+      console.log('🎮 Using GPS simulation for navigation');
+      startGPSSimulation();
+    } else if (navigator.geolocation) {
+      console.log('📍 Using real GPS for navigation');
       navigator.geolocation.watchPosition(
         (position) => {
           const newLocation = {
@@ -1727,8 +1866,7 @@ const NewRoute = () => {
     console.log('Toggle clicked. Current state:', { 
       showBikeLayer, 
       map: !!map, 
-      bikeLayer: !!bikeLayer,
-      isNavigating 
+      bikeLayer: !!bikeLayer
     });
     
     if (!map) {
@@ -1740,35 +1878,38 @@ const NewRoute = () => {
     console.log('Changing showBikeLayer from', showBikeLayer, 'to', newShowState);
     
     if (newShowState) {
-      // Show bicycle layer
+      // Show bicycle layer and restore normal map styling
       if (!bikeLayer) {
         console.log('Creating new bicycle layer');
         const newBikeLayer = new window.google.maps.BicyclingLayer();
         setBikeLayer(newBikeLayer);
         newBikeLayer.setMap(map);
-        setShowBikeLayer(true);
-        console.log('New bicycle layer created and shown');
       } else {
         console.log('Showing existing bicycle layer');
         bikeLayer.setMap(map);
-        setShowBikeLayer(true);
-        console.log('Existing bicycle layer shown');
       }
+      
+      // Reset map styles to show bicycle features
+      map.setOptions({ styles: [] });
+      setShowBikeLayer(true);
+      console.log('Bicycle layer shown and styles reset');
     } else {
+      // Hide bicycle layer and apply hiding styles
       if (bikeLayer) {
         console.log('Hiding bicycle layer');
         bikeLayer.setMap(null);
-        setShowBikeLayer(false);
-        console.log('Bicycle layer hidden');
-        
-        // Force multiple hide attempts to ensure it stays hidden
-        setTimeout(() => bikeLayer.setMap(null), 10);
-        setTimeout(() => bikeLayer.setMap(null), 100);
-        setTimeout(() => bikeLayer.setMap(null), 200);
-      } else {
-        console.log('No bicycle layer to hide');
-        setShowBikeLayer(false);
       }
+      
+      // Apply styles to hide bicycle features
+      const hideBicycleStyles = [
+        {
+          featureType: 'road.bicycle',
+          stylers: [{ visibility: 'off' }]
+        }
+      ];
+      map.setOptions({ styles: hideBicycleStyles });
+      setShowBikeLayer(false);
+      console.log('Bicycle layer hidden and styles applied');
     }
   };
 
@@ -1923,15 +2064,16 @@ const NewRoute = () => {
   };
 
   if (loadError) {
-    console.error('Google Maps Load Error:', loadError);
+    console.error('🚨 Google Maps Load Error:', loadError);
     return (
       <Container>
         <Sidebar>
-          <Title>Google Maps Error</Title>
+          <Title>🗺️ Google Maps Error</Title>
           <div style={{ color: '#e74c3c', padding: '1rem', background: '#fdf2f2', borderRadius: '8px' }}>
-            <p><strong>Maps couldn't load.</strong></p>
-            <p><strong>Error:</strong> {loadError.message || 'Unknown error'}</p>
-            <p>Current API Key: {process.env.REACT_APP_GOOGLE_MAPS_API_KEY ? 'Present' : 'Missing'}</p>
+            <p><strong>❌ Maps couldn't load.</strong></p>
+            <p><strong>Error:</strong> {loadError?.message || loadError?.toString() || 'Unknown error'}</p>
+            <p><strong>API Key Status:</strong> {process.env.REACT_APP_GOOGLE_MAPS_API_KEY ? '✅ Present' : '❌ Missing'}</p>
+            <p><strong>API Key (first 20 chars):</strong> {process.env.REACT_APP_GOOGLE_MAPS_API_KEY ? process.env.REACT_APP_GOOGLE_MAPS_API_KEY.substring(0, 20) + '...' : 'N/A'}</p>
             
             <h4 style={{ marginTop: '1rem', marginBottom: '0.5rem' }}>Troubleshooting:</h4>
             <ol style={{ marginTop: '1rem', paddingLeft: '1.5rem' }}>
@@ -1973,10 +2115,22 @@ const NewRoute = () => {
     return (
       <Container>
         <Sidebar>
-          <Title>Loading...</Title>
+          <Title>Carregando Mapa...</Title>
+          <div style={{ padding: '1rem', background: '#e8f4f8', borderRadius: '8px', marginBottom: '1rem' }}>
+            <p>🔄 Carregando Google Maps...</p>
+            <p style={{ fontSize: '0.8rem', color: '#666' }}>
+              Se demorar muito, pode ser problema com a API key
+            </p>
+          </div>
         </Sidebar>
         <MapContainer style={{ background: '#f8f9fa', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ color: '#7f8c8d' }}>Loading Google Maps...</div>
+          <div style={{ textAlign: 'center', color: '#7f8c8d' }}>
+            <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>🗺️</div>
+            <div>Carregando Google Maps...</div>
+            <div style={{ fontSize: '0.8rem', marginTop: '0.5rem' }}>
+              Aguarde alguns segundos
+            </div>
+          </div>
         </MapContainer>
       </Container>
     );
@@ -2212,7 +2366,7 @@ const NewRoute = () => {
     <>
 
       <Container>
-        <Sidebar>
+        <Sidebar ref={sidebarRef}>
         <Title>Planejar Rota</Title>
         
         {showRouteChangedNotice && (
@@ -2336,8 +2490,14 @@ const NewRoute = () => {
             <Autocomplete
               onLoad={(autocomplete) => originRef.current = autocomplete}
               onPlaceChanged={() => {
-                const place = originRef.current.getPlace();
-                handleOriginChange(place.formatted_address);
+                if (originRef.current) {
+                  const place = originRef.current.getPlace();
+                  if (place && place.formatted_address) {
+                    handleOriginChange(place.formatted_address);
+                  } else {
+                    console.log('No valid place selected for origin');
+                  }
+                }
               }}
             >
               <Input
@@ -2387,8 +2547,14 @@ const NewRoute = () => {
             <Autocomplete
               onLoad={(autocomplete) => destinationRef.current = autocomplete}
               onPlaceChanged={() => {
-                const place = destinationRef.current.getPlace();
-                handleDestinationChange(place.formatted_address);
+                if (destinationRef.current) {
+                  const place = destinationRef.current.getPlace();
+                  if (place && place.formatted_address) {
+                    handleDestinationChange(place.formatted_address);
+                  } else {
+                    console.log('No valid place selected for destination');
+                  }
+                }
               }}
             >
               <Input
@@ -2415,8 +2581,14 @@ const NewRoute = () => {
                 <Autocomplete
                   onLoad={(autocomplete) => waypointRefs.current[index] = autocomplete}
                   onPlaceChanged={() => {
-                    const place = waypointRefs.current[index].getPlace();
-                    updateWaypoint(index, place.formatted_address);
+                    if (waypointRefs.current[index]) {
+                      const place = waypointRefs.current[index].getPlace();
+                      if (place && place.formatted_address) {
+                        updateWaypoint(index, place.formatted_address);
+                      } else {
+                        console.log(`No valid place selected for waypoint ${index + 1}`);
+                      }
+                    }
                   }}
                 >
                   <Input
@@ -2453,55 +2625,127 @@ const NewRoute = () => {
         </StartButton>
 
         {routeInfo && (
-          <RouteInfo>
-            <InfoItem>
-              <span>Distance:</span>
-              <strong>{routeInfo.distance.toFixed(1)} km</strong>
-            </InfoItem>
-            <InfoItem>
-              <span>Duration:</span>
-              <strong>{Math.round(routeInfo.duration)} min</strong>
-            </InfoItem>
-            <InfoItem>
-              <span>CO₂ Saved:</span>
-              <strong>{routeInfo.co2Saved.toFixed(2)} kg</strong>
-            </InfoItem>
-            
-            {/* Show applied preferences */}
-            <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: '#7f8c8d' }}>
-              <div><strong>Preferências aplicadas:</strong></div>
-              {preferBikeLanes && <div>✅ Priorizando ciclofaixas</div>}
-              {avoidHighways && <div>✅ Evitando estradas/rodovias</div>}
-              {avoidExpressways && <div>✅ Evitando vias expressas</div>}
-              {followTrafficLaws && <div>✅ Seguindo leis de trânsito</div>}
-            </div>
-            {routeInfo.elevationGain !== undefined && (
-              <ElevationInfo>
-                <div style={{ marginBottom: '0.5rem', fontWeight: 'bold' }}>🏔️ Perfil de Elevação</div>
-                <InfoItem style={{ color: 'white', marginBottom: '0.5rem' }}>
-                  <span>Ganho de Elevação:</span>
-                  <strong>{routeInfo.elevationGain} m</strong>
-                </InfoItem>
-                <InfoItem style={{ color: 'white', marginBottom: '0.5rem' }}>
-                  <span>Elevação Máxima:</span>
-                  <strong>{routeInfo.maxElevation} m</strong>
-                </InfoItem>
-                <DifficultyBadge color={routeInfo.difficultyColor}>
-                  {routeInfo.difficulty === 'Fácil' && '😊'}
-                  {routeInfo.difficulty === 'Moderado' && '😅'}
-                  {routeInfo.difficulty === 'Difícil' && '😰'}
-                  {routeInfo.difficulty === 'Muito Difícil' && '🥵'}
-                  {routeInfo.difficulty}
-                </DifficultyBadge>
-              </ElevationInfo>
-            )}
-          </RouteInfo>
+          <>
+            <RouteInfo data-route-info>
+              <InfoItem>
+                <span>Distance:</span>
+                <strong>{routeInfo.distance.toFixed(1)} km</strong>
+              </InfoItem>
+              <InfoItem>
+                <span>Duration:</span>
+                <strong>{Math.round(routeInfo.duration)} min</strong>
+              </InfoItem>
+              <InfoItem>
+                <span>CO₂ Saved:</span>
+                <strong>{routeInfo.co2Saved.toFixed(2)} kg</strong>
+              </InfoItem>
+              
+              {/* Show applied preferences */}
+              <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: '#7f8c8d' }}>
+                <div><strong>Preferências aplicadas:</strong></div>
+                {preferBikeLanes && <div>✅ Priorizando ciclofaixas</div>}
+                {avoidHighways && <div>✅ Evitando estradas/rodovias</div>}
+                {avoidExpressways && <div>✅ Evitando vias expressas</div>}
+                {followTrafficLaws && <div>✅ Seguindo leis de trânsito</div>}
+              </div>
+
+              {routeInfo.elevationGain !== undefined && (
+                <ElevationInfo>
+                  <div style={{ marginBottom: '0.5rem', fontWeight: 'bold' }}>🏔️ Perfil de Elevação</div>
+                  <InfoItem style={{ color: 'white', marginBottom: '0.5rem' }}>
+                    <span>Ganho de Elevação:</span>
+                    <strong>{routeInfo.elevationGain} m</strong>
+                  </InfoItem>
+                  <InfoItem style={{ color: 'white', marginBottom: '0.5rem' }}>
+                    <span>Elevação Máxima:</span>
+                    <strong>{routeInfo.maxElevation} m</strong>
+                  </InfoItem>
+                  <DifficultyBadge color={routeInfo.difficultyColor}>
+                    {routeInfo.difficulty === 'Fácil' && '😊'}
+                    {routeInfo.difficulty === 'Moderado' && '😅'}
+                    {routeInfo.difficulty === 'Difícil' && '😰'}
+                    {routeInfo.difficulty === 'Muito Difícil' && '🥵'}
+                    {routeInfo.difficulty}
+                  </DifficultyBadge>
+                </ElevationInfo>
+              )}
+            </RouteInfo>
+
+            {/* Botão de ciclovias logo após calcular rota */}
+            <ToggleButton 
+              onClick={toggleBikeLayer} 
+              active={showBikeLayer}
+              style={{ marginTop: '1rem', width: '100%' }}
+            >
+              {showBikeLayer ? '🚫 Esconder Ciclovias' : '🚴‍♂️ Mostrar Ciclovias'}
+            </ToggleButton>
+          </>
         )}
 
         {directions && !isNavigating && (
-          <StartButton onClick={startNavigation}>
-            <FiPlay /> Iniciar Navegação
-          </StartButton>
+          <>
+            <StartButton onClick={startNavigation}>
+              <FiPlay /> Iniciar Navegação
+            </StartButton>
+            
+            {/* GPS Simulation Controls (Development Only) */}
+            {process.env.NODE_ENV === 'development' && (
+              <div style={{ 
+                marginTop: '1rem', 
+                padding: '1rem', 
+                background: '#e8f4f8', 
+                borderRadius: '8px',
+                border: '2px solid #3498db'
+              }}>
+                <h4 style={{ color: '#2c3e50', marginBottom: '0.5rem', fontSize: '0.9rem' }}>
+                  🧪 Modo de Teste (Development)
+                </h4>
+                
+                <div style={{ marginBottom: '0.5rem' }}>
+                  <label style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '0.5rem',
+                    fontSize: '0.8rem',
+                    color: '#2c3e50'
+                  }}>
+                    <input
+                      type="checkbox"
+                      checked={isSimulating}
+                      onChange={(e) => setIsSimulating(e.target.checked)}
+                    />
+                    Simular GPS (teste sem sair de casa)
+                  </label>
+                </div>
+                
+                {isSimulating && (
+                  <div style={{ marginBottom: '0.5rem' }}>
+                    <label style={{ 
+                      fontSize: '0.8rem', 
+                      color: '#2c3e50',
+                      display: 'block',
+                      marginBottom: '0.25rem'
+                    }}>
+                      Velocidade da simulação: {simulationSpeed}x
+                    </label>
+                    <input
+                      type="range"
+                      min="0.5"
+                      max="10"
+                      step="0.5"
+                      value={simulationSpeed}
+                      onChange={(e) => setSimulationSpeed(parseFloat(e.target.value))}
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                )}
+                
+                <div style={{ fontSize: '0.7rem', color: '#7f8c8d', marginTop: '0.5rem' }}>
+                  💡 Com GPS simulado, você pode testar a navegação sem se mover
+                </div>
+              </div>
+            )}
+          </>
         )}
         
         {isNavigating && (
@@ -2509,15 +2753,6 @@ const NewRoute = () => {
             🛑 Parar Navegação
           </StartButton>
         )}
-        
-        <ToggleButton onClick={toggleBikeLayer} active={showBikeLayer}>
-          {showBikeLayer ? '🚫 Esconder Ciclovias' : '🚴‍♂️ Mostrar Ciclovias'}
-        </ToggleButton>
-        
-        {/* Debug info for bike layer - remove in production */}
-        <div style={{ fontSize: '0.7rem', color: '#666', padding: '0.5rem', marginTop: '0.5rem' }}>
-          Status: {showBikeLayer ? 'Mostradas' : 'Ocultas'} | Layer: {bikeLayer ? 'Existe' : 'Não existe'}
-        </div>
       </Sidebar>
 
       <MapContainer>
@@ -2526,58 +2761,32 @@ const NewRoute = () => {
           center={currentLocationCoords || center}
           zoom={currentLocationCoords ? 15 : 12}
           onLoad={(mapInstance) => {
+            console.log('🗺️ Map instance loaded successfully!');
             setMap(mapInstance);
             
-            // Create bicycle layer but keep it hidden by default
+            // Simple bicycle layer setup
             const bicyclingLayer = new window.google.maps.BicyclingLayer();
             setBikeLayer(bicyclingLayer);
-            
-            // ALWAYS start with bike layer hidden - don't add to map at all initially
-            console.log('Map loaded - bike layer created but NOT added to map');
-            
-            // Set up a periodic check to ensure no auto-generated bike layers appear
-            const preventAutoBikeLayers = () => {
-              if (!showBikeLayer) {
-                // Remove our controlled layer if it somehow got added
-                bicyclingLayer.setMap(null);
-                
-                // Check for and remove any auto-generated overlay layers
-                const overlays = mapInstance.overlayMapTypes;
-                if (overlays && overlays.getLength() > 0) {
-                  for (let i = overlays.getLength() - 1; i >= 0; i--) {
-                    const overlay = overlays.getAt(i);
-                    if (overlay && (
-                      overlay.toString().toLowerCase().includes('bicycl') ||
-                      overlay.toString().toLowerCase().includes('bike') ||
-                      overlay.name === 'bicycling'
-                    )) {
-                      console.log('Removing auto-generated bike overlay:', overlay);
-                      overlays.removeAt(i);
-                    }
-                  }
-                }
-              }
-            };
-            
-            // Initial cleanup
-            preventAutoBikeLayers();
-            
-            // Set up periodic monitoring (only when bike layer should be hidden)
-            const monitorInterval = setInterval(() => {
-              if (!showBikeLayer) {
-                preventAutoBikeLayers();
-              }
-            }, 1000);
-            
-            // Clean up interval when component unmounts
-            // Store interval reference in map instance for cleanup
-            mapInstance._bikLayerMonitor = monitorInterval;
+            console.log('✅ Bicycle layer created (hidden by default)');
+          }}
+          onError={(error) => {
+            console.error('🚨 Google Map Error:', error);
+          }}
+          onUnmount={() => {
+            console.log('🗺️ Map unmounted');
+            setMap(null);
           }}
           options={{
             zoomControl: true,
             streetViewControl: false,
-            mapTypeControl: false,
-            fullscreenControl: true
+            mapTypeControl: true,
+            fullscreenControl: true,
+            mapTypeControlOptions: {
+              style: window.google?.maps?.MapTypeControlStyle?.HORIZONTAL_BAR,
+              position: window.google?.maps?.ControlPosition?.TOP_CENTER,
+              mapTypeIds: ['roadmap', 'satellite', 'hybrid', 'terrain']
+            },
+            styles: null // Ensure no custom styling that might hide roads
           }}
         >
           {directions && (

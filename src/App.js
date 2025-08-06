@@ -8,6 +8,7 @@ import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import NewRoute from './pages/NewRoute';
 import History from './pages/History';
+import StravaCallback from './pages/StravaCallback';
 import './App.css';
 
 const AppContent = () => {
@@ -48,6 +49,10 @@ const AppContent = () => {
               <History />
             </ProtectedRoute>
           } 
+        />
+        <Route 
+          path="/strava-callback" 
+          element={<StravaCallback />} 
         />
         <Route 
           path="/" 

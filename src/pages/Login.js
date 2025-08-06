@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import styled from 'styled-components';
 import { FiMail, FiLock, FiEye, FiEyeOff } from 'react-icons/fi';
+import PedaleiLogo from '../components/PedaleiLogo';
 
 const Container = styled.div`
   min-height: 100vh;
@@ -19,6 +20,12 @@ const Card = styled.div`
   box-shadow: 0 10px 30px rgba(0,0,0,0.2);
   width: 100%;
   max-width: 400px;
+`;
+
+const LogoContainer = styled.div`
+  display: flex;
+  justify-content: center;
+  margin-bottom: 1rem;
 `;
 
 const Title = styled.h1`
@@ -168,7 +175,9 @@ const Login = () => {
   return (
     <Container>
       <Card>
-        <Title>🚴‍♂️ Pedalei</Title>
+        <LogoContainer>
+          <PedaleiLogo width={180} height={54} />
+        </LogoContainer>
         <Subtitle>Welcome back, cyclist!</Subtitle>
         
         <Form onSubmit={handleSubmit}>

@@ -24,18 +24,32 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     try {
-      // TODO: Replace with actual API call
-      const mockUser = {
-        id: '1',
-        email,
-        name: email.split('@')[0],
-        level: 1,
-        totalKm: 0,
-        co2Saved: 0
-      };
+      // Basic validation
+      if (!email || !password) {
+        return { success: false, error: 'Email e senha são obrigatórios' };
+      }
+
+      // Get stored users
+      const storedUsers = JSON.parse(localStorage.getItem('pedalei_users') || '[]');
       
-      setUser(mockUser);
-      localStorage.setItem('pedalei_user', JSON.stringify(mockUser));
+      // Find user
+      const existingUser = storedUsers.find(user => user.email === email);
+      
+      if (!existingUser) {
+        return { success: false, error: 'Usuário não encontrado. Crie uma conta primeiro.' };
+      }
+
+      // Simple password check (in production, use proper hashing)
+      if (existingUser.password !== password) {
+        return { success: false, error: 'Senha incorreta' };
+      }
+
+      // Remove password from user object for security
+      const userForSession = { ...existingUser };
+      delete userForSession.password;
+      
+      setUser(userForSession);
+      localStorage.setItem('pedalei_user', JSON.stringify(userForSession));
       return { success: true };
     } catch (error) {
       return { success: false, error: error.message };
@@ -49,18 +63,51 @@ export const AuthProvider = ({ children }) => {
 
   const register = async (email, password, name) => {
     try {
-      // TODO: Replace with actual API call
-      const mockUser = {
-        id: '1',
+      // Basic validation
+      if (!email || !password || !name) {
+        return { success: false, error: 'Todos os campos são obrigatórios' };
+      }
+
+      if (password.length < 6) {
+        return { success: false, error: 'Senha deve ter pelo menos 6 caracteres' };
+      }
+
+      if (!email.includes('@')) {
+        return { success: false, error: 'Email inválido' };
+      }
+
+      // Get stored users
+      const storedUsers = JSON.parse(localStorage.getItem('pedalei_users') || '[]');
+      
+      // Check if user already exists
+      const existingUser = storedUsers.find(user => user.email === email);
+      if (existingUser) {
+        return { success: false, error: 'Usuário já existe. Faça login.' };
+      }
+
+      // Create new user
+      const newUser = {
+        id: Date.now().toString(), // Simple ID generation
         email,
         name,
+        password, // In production, hash this
         level: 1,
         totalKm: 0,
-        co2Saved: 0
+        co2Saved: 0,
+        createdAt: new Date().toISOString(),
+        routes: []
       };
+
+      // Save to users list
+      storedUsers.push(newUser);
+      localStorage.setItem('pedalei_users', JSON.stringify(storedUsers));
+
+      // Remove password from user object for session
+      const userForSession = { ...newUser };
+      delete userForSession.password;
       
-      setUser(mockUser);
-      localStorage.setItem('pedalei_user', JSON.stringify(mockUser));
+      setUser(userForSession);
+      localStorage.setItem('pedalei_user', JSON.stringify(userForSession));
       return { success: true };
     } catch (error) {
       return { success: false, error: error.message };
